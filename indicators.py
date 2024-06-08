@@ -16,7 +16,9 @@ class INDI(threading.Thread):
         pairmap = self.k.query_public('AssetPairs')
         self.full = FULL
         self.current = CURRENT
-        
+
+        self.funcMap = INDI.__dict__
+        # print(self.funcMap)
         threading.Thread.__init__(self)
         if type(DATA) != list:
             raise Exception ('data must be list of lists [[pair, interval, period],]')
@@ -39,7 +41,7 @@ class INDI(threading.Thread):
                 if opt[0] == parmp['altname'] and y[-2:] != '.d':
                     self.data[opt[0]].update({'fullname':y, 'wsname':parmp['wsname']})
 
-    def getNew(self, data=None):
+    def getNew(self, indicators, data=None):
         for pair in self.data:
 ##            print(pair)
             if data == None:
@@ -48,14 +50,6 @@ class INDI(threading.Thread):
                         res = self.k.query_public('OHLC', {'pair':pair, 'interval':self.data[pair]['interval']})
                         ohlc = res['result'][self.data[pair]['fullname']]
                         
-                        rsi  = self.getRSI(ohlc, self.data[pair]['period'][0])
-                        sma  = self.getSMA(ohlc, self.data[pair]['period'])
-                        chan = self.getCHAN(ohlc, self.data[pair]['period'][0])
-                        macd = self.getMACD(ohlc, self.data[pair]['period'])
-                        dmi  = self.getDMI(ohlc, self.data[pair]['period'][0])
-
-                        self.data[pair].update({'rsi':rsi, 'sma':sma, 'chan':chan, 'macd':macd, 'dmi':dmi, 'ctime':ohlc[-1][0]})
-                        self.setup = True
                     except Exception as f:
                         try:
                             print(f)
@@ -70,7 +64,13 @@ class INDI(threading.Thread):
                     else:
                         break
             else:
-                ohlc = data['result'][symbol]
+                ohlc = data['result'][pair]
+
+            for i in indicators:
+                self.data[pair].update({i:self.funcMap['get'+i.upper()](self, ohlc, indicators[i]['period'])})
+
+            self.data[pair].update({'ohlc':ohlc,'ctime':ohlc[-1][0]})
+            self.setup = True
 
 
 #-------------------------------Chandelier Exits----------------------------------------------------------------------------------    
@@ -118,9 +118,9 @@ class INDI(threading.Thread):
         else:
             print('yikes', len(SATR), len(hl))
             
-        results = []       
+        results = [[float(exits[0][0]),float(exits[0][0]),float(exits[0][0])]]*(period+1)
         for i in range(len(exits)):
-            results.append([float(exits[i][0]), float(exits[i][1]), float(ohlc[i+period+1][2]), float(ohlc[i+period+1][3]), float(ohlc[i+period+1][4]), float((exits[i][0]+exits[i][1])/2), ohlc[i+period+1][0]]) #, float(((exits[i][0]+exits[i][1])/2)-float(ohlc[i+period+1][4]))])
+            results.append([float(exits[i][0]), float(exits[i][1]), float((exits[i][0]+exits[i][1])/2)]) #, float(((exits[i][0]+exits[i][1])/2)-float(ohlc[i+period+1][4]))])
 
         return results
     
@@ -203,7 +203,7 @@ class INDI(threading.Thread):
             smadowns = (lD*(period-1)+x)/period
             lD = smadowns
             
-        results=[]
+        results=[0]*(period+1)
         if len(ups) != len(downs):
             raise Exception ('Error, something went wrong')
         else:
@@ -304,9 +304,9 @@ class INDI(threading.Thread):
                 DIP.append(dip)
                 DIM.append(dim)
                 
-        results = []        
+        results = [[0,0]]*(period+1)    
         for i in range(len(DIP)):
-            results.append([DIP[i], DIM[i], ohlc[i+period+1][2], ohlc[i+period+1][3], ohlc[i+period+1][4], (DIP[i]-DIM[i])])
+            results.append([DIP[i], DIM[i]]) #(DIP[i]-DIM[i])
                 
         return results 
 
