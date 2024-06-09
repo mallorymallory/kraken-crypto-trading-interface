@@ -13,54 +13,92 @@ class INDI(threading.Thread):
     def __init__(self, DATA, FULL=False, CURRENT=False):
         
         self.k = krakenex.API()
-        pairmap = self.k.query_public('AssetPairs')
+        self.interval = None
         self.full = FULL
         self.current = CURRENT
-
         self.funcMap = INDI.__dict__
-        # print(self.funcMap)
         threading.Thread.__init__(self)
         if type(DATA) != list:
-            raise Exception ('data must be list of lists [[pair, interval, period],]')
-        
+            raise Exception ('data must be list of pairs [pair,...]')
         self.data = {}
-
         self.setup = False
+        self.pairmap = self.getPairmap()
 
-        for opt in DATA:
-            self.data.update({opt[0]:{'interval':opt[1],
-                                      'period':opt[2],
+        for pair in DATA:
+            self.data.update({pair:{'ohlc':None,
                                       'rsi':None,
                                       'sma':None,
                                       'ema':None,
                                       'chan':None,
                                       'dmi':None,
                                       'macd':None}})
-            for y in list(pairmap['result']):
-                parmp = pairmap['result'][y]
-                if opt[0] == parmp['altname'] and y[-2:] != '.d':
-                    self.data[opt[0]].update({'fullname':y, 'wsname':parmp['wsname']})
 
-    def getNew(self, indicators, data=None):
+
+    def pairSetter(self, list, change=True):
+        if change:
+            self.data = {}
+        for pair in list:
+            self.data.update({pair:{'ohlc':None,
+                                        'rsi':None,
+                                        'sma':None,
+                                        'ema':None,
+                                        'chan':None,
+                                        'dmi':None,
+                                        'macd':None}})
+
+    def getPairmap(self):
+        pairmap = {}
+        AP = None
+        for i in range(2):
+            try:
+                AP = self.k.query_public('AssetPairs')['result']
+                for i in AP:
+                    pairmap.update({AP[i]['altname']:i,
+                                    AP[i]['wsname']:i,
+                                    i:i,
+                                    AP[i]['altname'].lower():i,
+                                    AP[i]['wsname'].lower():i,
+                                    i.lower():i,
+
+                                    })
+                pairmap.update({'BTCUSD':'XXBTZUSD',
+                                'BTC/USD':'XXBTZUSD',
+                                'BTCUSD'.lower():'XXBTZUSD',
+                                'BTC/USD'.lower():'XXBTZUSD',
+                                    })
+                    
+            except Exception as F:
+                print(F)
+                with open('OHLCErrors.csv', 'a', newline='') as FF:
+                    ff = csv.writer(FF)
+                    ff.writerow([time.time(), AP, F, traceback.format_exc()])
+            else:
+                break
+
+        return pairmap
+
+
+    def getNew(self, indicators, interval=None, data=None):
+        if interval == None:
+            if self.interval == None:
+                raise('no interval set')
+        else:
+            self.interval=interval
+        res = None
         for pair in self.data:
 ##            print(pair)
             if data == None:
                 for x in range(2):
                     try:
-                        res = self.k.query_public('OHLC', {'pair':pair, 'interval':self.data[pair]['interval']})
-                        ohlc = res['result'][self.data[pair]['fullname']]
+                        res = self.k.query_public('OHLC', {'pair':pair, 'interval':self.interval})
+                        ohlc = res['result'][self.pairmap[pair]]
                         
                     except Exception as f:
-                        try:
-                            print(f)
-                            with open('OHLCErrors.csv', 'a', newline='') as FF:
-                                ff = csv.writer(FF)
-                                ff.writerow([time.time(), res, f, traceback.format_exc()])
-                        except Exception as F:
-                            print(F)
-                            with open('OHLCErrors.csv', 'a', newline='') as FFF:
-                                fff = csv.writer(FFF)
-                                fff.writerow([time.time(), '', F, traceback.format_exc()])
+                        print(f)
+                        with open('OHLCErrors.csv', 'a', newline='') as FF:
+                            ff = csv.writer(FF)
+                            ff.writerow([time.time(), res, f, traceback.format_exc()])
+
                     else:
                         break
             else:

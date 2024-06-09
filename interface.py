@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 import time
 from indicators import INDI
 import json
@@ -30,16 +31,22 @@ def menuBarCreatoor():
     del_menu.add_command(label='rsi',command=lambda: CLEAROOR('rsi'))
     del_menu.add_command(label='macd',command=lambda: CLEAROOR('macd'))
 
+    help_menu = tk.Menu(menubar)
+    menubar.add_cascade(label="Help",menu=help_menu)
+    help_menu.add_command(label='pairs',command=lambda: messagebox.showinfo('pairs', list(indicators.pairmap.keys())))
+    help_menu.add_command(label='intervals',command=lambda: messagebox.showinfo('intervals', pInts))
+
+
 def mainCreatoor():
     mainCanvas = tk.Canvas(canframe, bg='black', height = 500, width=720, scrollregion=(0,0,5760,5760))
     mainCanvas.config(xscrollcommand=xscroll.set)
-    mainCanvas.pack()
+    mainCanvas.grid(column=0,row=0)
     return mainCanvas
 
-def underCreatoor():
+def underCreatoor(y):
     subCanvas = tk.Canvas(canframe, bg='black', height= 100, width=720, scrollregion=(0,0,5760,5760))
     subCanvas.config(xscrollcommand=xscroll.set)
-    subCanvas.pack()
+    subCanvas.grid(column=0,row=y)
     return subCanvas
 
 # def stuffDrawoor():
@@ -57,8 +64,8 @@ def startoor():
     return pMap,interval,pair,activeIndicators
 
 def chartDrawoor(x, open, high, low, close, multi, ofs, colour):
-    c.create_rectangle(x-7, ((float(open)*multi)*-1) +ofs, x-1,((float(close)*multi)*-1)+ofs, fill=colour, )
-    c.create_line(x-4, ((float(high)*multi)*-1) +ofs, x-4,((float(low)*multi)*-1)+ofs, fill=colour, )
+    c.create_rectangle(x-7, ((float(open)*multi)*-1) +ofs, x-1,((float(close)*multi)*-1)+ofs, fill=colour, tags=('chart'))
+    c.create_line(x-4, ((float(high)*multi)*-1) +ofs, x-4,((float(low)*multi)*-1)+ofs, fill=colour, tags=('chart'))
 
 def indiDrawoor(indi, x, last, new, multi, ofs, canvas, colour):
     if type(last) != list:
@@ -77,13 +84,14 @@ def multiplusoffsetGettoor(data, sortbyindex, chartsize):
 
 
 def DRAWOOR():
+    pair = pairvar.get()
+    coords = canframe.grid_size()
+    print(coords)
     for i in activeIndicators:
         if activeIndicators[i]['active'] and i not in list(studyHolder.keys()):
             if i in STUDIES:
-                if i != 'macd':
-                    studyHolder.update({i:underCreatoor()})
-                else:
-                    studyHolder.update({i:studyHolder['rsi']})
+              studyHolder.update({i:underCreatoor(coords[1]+1)})
+
     x = 0
     lasts = {}
     # print(indicators.data[pair]['rsi'])
@@ -123,14 +131,23 @@ def DRAWOOR():
 
 
 def CLEAROOR(indi):
-    if indi in OVERLAY:
-        c.delete(indi)
+    if indi == 'change':
+        for i in activeIndicators:
+            if activeIndicators[i]['active']:
+                if i in OVERLAY:
+                    c.delete(i)
+                else:
+                    studyHolder[i].delete(i)
+        c.delete('chart')
     else:
-        studyHolder[indi].delete(indi)
-        if studyHolder[indi].find_all() == ():
-            studyHolder[indi].destroy()
-            studyHolder.pop(indi)
-    activeIndicators[indi]['active'] = 0
+        if indi in OVERLAY:
+            c.delete(indi)
+        else:
+            studyHolder[indi].delete(indi)
+            if studyHolder[indi].find_all() == ():
+                studyHolder[indi].destroy()
+                studyHolder.pop(indi)
+        activeIndicators[indi]['active'] = 0
 
 def activeIndiUpdatoor(indi):
     activeIndicators[indi]['active'] = 1
@@ -142,22 +159,75 @@ def xview(*args):
     for i in studyHolder:
         studyHolder[i].xview(*args)
 
+def labelEnteroor(args, Label):
+    Label.configure(fg='black', bg='white')
+def labelLeavoor(args, Label):
+    Label.configure(fg='white', bg='black')
+
+def labelClickoor(args, setting, ):
+    print(setting)
+    changer = tk.Entry(fakercanframe)
+    changer.grid(column=0, row=1)
+    changer.focus_set()
+    changerbutton = tk.Button(fakercanframe)
+    changerbutton.grid(column=1,row=1)
+    changer.bind('<Return>', lambda x: updateSettoor(changer.get(), [changer,changerbutton], setting))
+    changerbutton.configure(command= lambda: updateSettoor(changer.get(), [changer,changerbutton], setting))
+
+
+def updateSettoor(new,toDestroy, setting):
+    print(setting)
+
+    if new in list(indicators.pairmap.keys()) or str(new) in pInts:
+        if setting == 'pair':
+            pairvar.set(indicators.pairmap[new])
+            indicators.pairSetter([indicators.pairmap[new]])
+        else:
+            intvar.set(new)
+        indicators.getNew(activeIndicators, interval= None if setting == 'pair' else new)
+        toDestroy[0].destroy()
+        toDestroy[1].destroy()
+        CLEAROOR('change')
+        DRAWOOR()
+    else:
+        messagebox.showerror('Warning', 'not a valid '+setting+' try again')
+
 
 STUDIES = ['dmi', 'macd', 'rsi']
 OVERLAY = ['chan', 'sma', 'ema']
 
 pMap,interval,pair,activeIndicators = startoor()
 
-indicators = INDI([[pair, interval, pMap[str(interval)]]])
-indicators.getNew(activeIndicators)
+indicators = INDI([pair])
+indicators.getNew(activeIndicators, interval)
+pInts = ['1', '5', '10', '15', '30', '60', '240', '1440', '10080', '21600']
 
 top = tk.Tk()
 top.bind('<Motion>', motion)
 canframe = tk.Frame(top)
-canframe.pack()
+canframe.grid(column=0,row=0)
+fakercanframe = tk.Frame(top, bg='black')
+fakercanframe.grid(column=0,row=0, sticky='nw',padx=2,pady=2,)
 
-xscroll = tk.Scrollbar(canframe, orient='horizontal')
-xscroll.pack(side='bottom', fill='x')
+
+pairvar=tk.StringVar()
+pairvar.set(pair)
+pairLabel = tk.Label(fakercanframe, textvariable=pairvar, bg='black',fg='white',)
+pairLabel.grid(column=0,row=0, sticky='w')
+pairLabel.bind('<Enter>', lambda x: labelEnteroor(x, pairLabel))
+pairLabel.bind('<Leave>', lambda x: labelLeavoor(x, pairLabel))
+pairLabel.bind('<Button-1>', lambda x: labelClickoor(x,'pair'))
+
+intvar=tk.StringVar()
+intvar.set(interval)
+intLabel = tk.Label(fakercanframe, textvariable=intvar, bg='black',fg='white',)
+intLabel.grid(column=1,row=0, sticky='w')
+intLabel.bind('<Enter>', lambda x: labelEnteroor(x, intLabel))
+intLabel.bind('<Leave>', lambda x: labelLeavoor(x, intLabel))
+intLabel.bind('<Button-1>', lambda x: labelClickoor(x,'interval'))
+
+xscroll = tk.Scrollbar(top, orient='horizontal')
+xscroll.grid(column=0,row=100,sticky='ew')
 xscroll.config(command = xview)
 
 while True:
