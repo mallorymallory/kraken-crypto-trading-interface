@@ -2,7 +2,6 @@ import os.path
 import csv
 import sys
 import traceback
-from websocket import create_connection
 import threading
 import krakenex
 import pprint
@@ -31,6 +30,7 @@ class INDI(threading.Thread):
                                       'ema':None,
                                       'chan':None,
                                       'dmi':None,
+                                      'stoch':None,
                                       'macd':None}})
 
 
@@ -44,6 +44,7 @@ class INDI(threading.Thread):
                                         'ema':None,
                                         'chan':None,
                                         'dmi':None,
+                                        'stoch':None,
                                         'macd':None}})
 
     def getPairmap(self):
@@ -373,15 +374,37 @@ class INDI(threading.Thread):
             results.append(rs)
         return results
 
-
-# a = INDI([['XBTUSD', 15, [4, 16]], ['LTCUSD', 240, [6,42]]])
-# print(a.data)
-# a.getNew()
-# while a.setup != True:
-#     print(a.setup)
-#     time.sleep(0.5)
-# for j in a.data:
-#     for i in a.data[j]:
-#         if i in ['rsi', 'dmi', 'chan', 'macd', 'sma']:
-#             print(j, i, a.data[j][i][-1])
-#     print(j, 'ctime', a.data[j]['ctime'])
+    def getSTOCH(self, ohlc_data, period=14):
+        
+        def moving_average(values, window):
+            if len(values) < window:
+                return 0
+            return sum(values[-window:]) / window
+        
+        stochastic_data = []
+        for i in range(len(ohlc_data)):
+            if i < period - 1:
+                # Not enough data to calculate %K
+                stochastic_data.append([0, 0])
+            else:
+                high_14 = max([float(data[2]) for data in ohlc_data[i - period+1 :i]])
+                low_14 = min([float(data[3]) for data in ohlc_data[i - period+1:i]])
+                close = float(ohlc_data[i][4])
+                
+                if high_14 == low_14:
+                    # Avoid division by zero
+                    percent_k = 100
+                else:
+                    percent_k = ((close - low_14) / (high_14 - low_14)) * 100
+                
+                stochastic_data.append([percent_k, 0])
+        
+        percent_k_values = [data[0] for data in stochastic_data]
+        
+        for i in range(len(stochastic_data)):
+            if stochastic_data[i][0] is not 0 and i >= period +3:
+                stochastic_data[i][1] = moving_average(percent_k_values[i-3:i], 3)
+            else:
+                stochastic_data[i][1] = 0
+        
+        return stochastic_data
